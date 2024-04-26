@@ -1,7 +1,7 @@
 from typing import List
 from PIL import Image, ImageTk
 from ttkbootstrap import Label, Window, Separator, Frame, Button, Style, StringVar, Toplevel
-from ttkbootstrap.constants import *
+from collections import Counter
 
 
 class Card:
@@ -43,16 +43,80 @@ class Game:
         
         def generate_chances():
             if len(self.player_cards) > 0:
-                # TODO Gerar Chances de Vitória
-                self.straight_flush.set(f'Straight Flush: {""}%')
-                self.four_of_a_kind.set(f'Four of a Kind: {""}%')
-                self.full_house.set(f'Full House: {""}%')
-                self.flush.set(f'Flush: {""}%')
-                self.straight.set(f'Straight: {""}%')
-                self.three_of_a_kind.set(f'Three of a Kind: {""}%')
-                self.two_pair.set(f'Two Pair: {""}%')
-                self.pair.set(f'Pair: {""}%')
+                self.straight_flush.set(f'Straight Flush: {get_straight_flush_probability():.2f}%')
+                self.four_of_a_kind.set(f'Four of a Kind: {get_four_of_a_kind_probability():.2f}%')
+                self.full_house.set(f'Full House: {get_full_house_probability():.2f}%')
+                self.flush.set(f'Flush: {get_flush_probability():.2f}%')
+                self.straight.set(f'Straight: {get_straight_probability():.2f}%')
+                self.three_of_a_kind.set(f'Three of a Kind: {get_three_of_a_kind_probability():.2f}%')
+                self.two_pair.set(f'Two Pair: {get_two_pair_probability():.2f}%')
+                self.pair.set(f'Pair: {get_two_pair_probability():.2f}%')
             return
+
+        def get_straight_flush_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            straight_flush_probability = 0
+
+            return straight_flush_probability * 100
+
+        def get_four_of_a_kind_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            four_of_a_kind_probability = 0
+
+            return four_of_a_kind_probability * 100
+
+        def get_full_house_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            full_house_probability = 0
+
+            return full_house_probability * 100
+
+        def get_flush_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            flush_probability = 0
+
+            return flush_probability * 100
+        
+        def get_straight_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            straight_probability = 0
+
+            return straight_probability * 100
+        
+        
+        def get_three_of_a_kind_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            three_of_a_kind_probaility = 0
+
+            return three_of_a_kind_probaility * 100
+        
+        def get_two_pair_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            two_pair_probability = 0
+
+            return two_pair_probability * 100
+        
+        def get_pair_probability() -> float:
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+
+
+            pair_probability = 0
+
+            return pair_probability * 100
 
         def close_select_cards():
             self.select_cards.destroy()
@@ -67,10 +131,10 @@ class Game:
                 button.configure(image=photo_image)
                 button.image = photo_image
                 if card not in self.house:
-                    self.house.insert(index,card.__str__())
+                    self.house.insert(index,card)
                 else:
                     self.house.remove(card)
-                    self.house.insert(index,card.__str__())
+                    self.house.insert(index,card)
                 return
             image_url = card.image_url
             image = Image.open(image_url)
@@ -79,10 +143,10 @@ class Game:
             button.configure(image=photo_image)
             button.image = photo_image
             if card not in self.player_cards:
-                self.player_cards.insert(index,card.__str__())
+                self.player_cards.insert(index,card)
             else:
                 self.player_cards.remove(card)
-                self.player_cards.insert(index,card.__str__())
+                self.player_cards.insert(index,card)
 
         def add_card(master_button:Button, house=False, index:int=0):
             if master_button['text'] == '+' and not self.select_cards:
@@ -220,8 +284,6 @@ class Game:
 
         pair = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.pair)
         pair.place(x=280, y=190)
-
-        
 
         window.mainloop()
 
