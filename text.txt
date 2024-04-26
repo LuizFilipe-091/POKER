@@ -1,0 +1,7 @@
+image_url = Card('A', 'clubs').image_url
+image = Image.open(image_url)
+resized_image = image.resize((120, 210))
+photo_image = ImageTk.PhotoImage(resized_image)
+
+resized_image = image.resize((100, 165))
+photo_image = ImageTk.PhotoImage(resized_image)

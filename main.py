@@ -1,18 +1,20 @@
 from typing import List
 from PIL import Image, ImageTk
-from tkinter import Tk, Label
-from time import sleep
+from ttkbootstrap import Label, Window, Separator, Frame, Button, Style, StringVar, Toplevel
+from ttkbootstrap.constants import *
 
 
 class Card:
 
-    def __init__(self, rank, suit) -> None:
+    def __init__(self, rank: str, suit: str) -> None:
         self.rank = rank
         self.suit = suit
         self.image_url = f'./imgs/{suit}/{rank}-{suit}.png'
 
     def __str__(self):
         return self.rank + ' of ' + self.suit
+    
+
     
 class Game:
 
@@ -32,14 +34,196 @@ class Game:
     ]
 
     def __init__(self) -> None:
-        self.house: List[Card] or None = None # type: ignore
-        self.player_cards: List[Card] or None = None # type: ignore
-        self.new_game()
+        self.house: List[Card] or None = [] # type: ignore
+        self.player_cards: List[Card] or None = [] # type: ignore
+        self.select_cards: Toplevel or None = None #type: ignore
+        self.game()
 
-    def new_game(self):
-        # TODO
-        pass
+    def game(self):
+        
+        def generate_chances():
+            if len(self.player_cards) > 0:
+                # TODO Gerar Chances de Vitória
+                self.straight_flush.set(f'Straight Flush: {""}%')
+                self.four_of_a_kind.set(f'Four of a Kind: {""}%')
+                self.full_house.set(f'Full House: {""}%')
+                self.flush.set(f'Flush: {""}%')
+                self.straight.set(f'Straight: {""}%')
+                self.three_of_a_kind.set(f'Three of a Kind: {""}%')
+                self.two_pair.set(f'Two Pair: {""}%')
+                self.pair.set(f'Pair: {""}%')
+            return
 
+        def close_select_cards():
+            self.select_cards.destroy()
+            self.select_cards = None
+
+        def change_image(button:Button, card:Card, house:bool=False, index:int=0):
+            if house:
+                image_url = card.image_url
+                image = Image.open(image_url)
+                resized_image = image.resize((120, 210))
+                photo_image = ImageTk.PhotoImage(resized_image)
+                button.configure(image=photo_image)
+                button.image = photo_image
+                if card not in self.house:
+                    self.house.insert(index,card.__str__())
+                else:
+                    self.house.remove(card)
+                    self.house.insert(index,card.__str__())
+                return
+            image_url = card.image_url
+            image = Image.open(image_url)
+            resized_image = image.resize((100, 165))
+            photo_image = ImageTk.PhotoImage(resized_image)
+            button.configure(image=photo_image)
+            button.image = photo_image
+            if card not in self.player_cards:
+                self.player_cards.insert(index,card.__str__())
+            else:
+                self.player_cards.remove(card)
+                self.player_cards.insert(index,card.__str__())
+
+        def add_card(master_button:Button, house=False, index:int=0):
+            if master_button['text'] == '+' and not self.select_cards:
+                self.select_cards = Toplevel(title='Cards')
+                self.select_cards.protocol("WM_DELETE_WINDOW", close_select_cards)
+                self.select_cards.iconphoto(False, ImageTk.PhotoImage(Image.open("./imgs/icon.ico")))
+                self.select_cards.resizable(False, False)
+                self.select_cards.geometry('600x900')
+                self.select_cards.place_window_center()
+
+                x = y = 10
+
+                for i, card in enumerate(self.DECK):
+
+                    if i % 13 == 0 and i != 0:
+                        x += 150
+                        y = 10
+
+                    image_url = card.image_url
+                    image = Image.open(image_url)
+                    resized_image = image.resize((100, 165))
+                    photo_image = ImageTk.PhotoImage(resized_image)
+                    button = Button(self.select_cards, image=photo_image, style='1.TButton', command=lambda b=master_button, c=card, h=house, i=index: change_image(b, c, h, i))
+                    button.image = photo_image
+                    button.place(x=x, y=y)
+
+                    y += 60
+
+                self.select_cards.mainloop()
+
+        self.house = []
+        self.player_cards = []
+
+        window = Window(themename='darkly')
+        window.title('Poker')
+        window.iconphoto(False, ImageTk.PhotoImage(Image.open("./imgs/icon.ico")))
+        window.geometry('1000x600')
+        window.place_window_center()
+        window.resizable(False, False)
+
+        style = Style()
+        style.configure('1.TButton', font=('Helvetica', 140), background='#808080', foreground='#35d43a', borderwidth=0)
+        style.map('1.TButton', background=[('active', '#808080')], foreground=[('active', '#35d43a')])
+        style.configure('2.TButton', font=('Helvetica', 110), background='#808080', foreground='#35d43a', borderwidth=0)
+        style.map('2.TButton', background=[('active', '#808080')], foreground=[('active', '#35d43a')])
+        style.configure('3.TButton', font=('Helvetica', 22), background='#4c7d2c', foreground='#ffffff', borderwidth=0)
+        style.map('3.TButton', background=[('active', '#4c7d2c')], foreground=[('active', '#ffffff')])
+
+        title = Label(window, bootstyle='light', font=('Helvetica', 24),text='Poker Calculator')
+        title.place(x=370, y=10)
+
+        generate = Button(window,style='3.TButton', text='Generate', command=generate_chances)
+        generate.place(x=850, y=10)
+
+        bar = Separator(window, bootstyle='light', orient='horizontal')
+        bar.place(x=0, y=60, width=1000)
+
+        house = Frame(window, bootstyle='secondary', width=980, height=240)
+        house.place(x=10, y=80)
+
+        button_house_1 = Button(house, text="+", style='1.TButton', command=lambda: add_card(button_house_1, True, 0))
+        button_house_1.place(x=20, y=10)
+
+        button_house_2 = Button(house, text="+", style='1.TButton', command=lambda: add_card(button_house_2, True, 1))
+        button_house_2.place(x=220, y=10)
+
+        button_house_3 = Button(house, text="+", style='1.TButton', command=lambda: add_card(button_house_3, True, 2))
+        button_house_3.place(x=420, y=10)
+
+        button_house_4 = Button(house, text="+", style='1.TButton', command=lambda: add_card(button_house_4, True, 3))
+        button_house_4.place(x=620, y=10)
+
+        button_house_5 = Button(house, text="+", style='1.TButton', command=lambda: add_card(button_house_5, True, 4))
+        button_house_5.place(x=820, y=10)
+            
+        player = Frame(window, bootstyle='secondary', width=315, height=250)
+        player.place(x=10, y=340)
+
+        text_your_hand = Label(player, bootstyle='inverse-secondary', font=('Helvetica', 24), text='Your Hand')
+        text_your_hand.place(x=80, y=5)
+
+        button_player_1 = Button(player, text='+', style='2.TButton', command=lambda: add_card(button_player_1, False, 0))
+        button_player_1.place(x=20, y=60)
+
+        button_player_2 = Button(player, text='+', style='2.TButton', command=lambda: add_card(button_player_2, False, 1))
+        button_player_2.place(x=180, y=60)
+
+        percentage = Frame(window, bootstyle='secondary', width=590, height=250)
+        percentage.place(x=400, y=340)
+
+        self.straight_flush = StringVar()
+        self.straight_flush.set('Straight Flush:')
+
+        straight_flush = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.straight_flush)
+        straight_flush.place(x=5, y=10)
+
+        self.four_of_a_kind = StringVar()
+        self.four_of_a_kind.set('Four of a Kind:')
+
+        four_of_a_kind = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.four_of_a_kind)
+        four_of_a_kind.place(x=5, y=70)
+
+        self.full_house = StringVar()
+        self.full_house.set('Full House:')
+
+        full_house = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.full_house)
+        full_house.place(x=5, y=130)
+
+        self.flush = StringVar()
+        self.flush.set('Flush:')
+
+        flush = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.flush)
+        flush.place(x=5, y=190)
+
+        self.straight = StringVar()
+        self.straight.set('Straight:')
+
+        straight = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.straight)
+        straight.place(x=280, y=10)
+
+        self.three_of_a_kind = StringVar()
+        self.three_of_a_kind.set('Three of a Kind:')
+
+        three_of_a_kind = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.three_of_a_kind)
+        three_of_a_kind.place(x=280, y=70)
+
+        self.two_pair = StringVar()
+        self.two_pair.set('Two Pair: ')
+
+        two_pair = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.two_pair)
+        two_pair.place(x=280, y=130)
+
+        self.pair = StringVar()
+        self.pair.set('Pair:')
+
+        pair = Label(percentage, bootstyle='inverse-secondary', font=('Helvetica', 20), textvariable=self.pair)
+        pair.place(x=280, y=190)
+
+        
+
+        window.mainloop()
 
 if __name__ == '__main__':
     Game()
