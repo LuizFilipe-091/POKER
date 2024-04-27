@@ -1,7 +1,7 @@
 from typing import List
 from PIL import Image, ImageTk
 from ttkbootstrap import Label, Window, Separator, Frame, Button, Style, StringVar, Toplevel
-from collections import Counter
+from itertools import combinations
 
 
 class Card:
@@ -50,7 +50,7 @@ class Game:
                 self.straight.set(f'Straight: {get_straight_probability():.2f}%')
                 self.three_of_a_kind.set(f'Three of a Kind: {get_three_of_a_kind_probability():.2f}%')
                 self.two_pair.set(f'Two Pair: {get_two_pair_probability():.2f}%')
-                self.pair.set(f'Pair: {get_two_pair_probability():.2f}%')
+                self.pair.set(f'Pair: {get_pair_probability():.2f}%')
             return
 
         def get_straight_flush_probability() -> float:
@@ -111,12 +111,25 @@ class Game:
             return two_pair_probability * 100
         
         def get_pair_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+            remaining_cards = [card for card in self.DECK if card not in self.player_cards + self.house]
+            game_cards = self.house + self.player_cards
 
+            player_ranks = list(map(lambda card: card.rank, game_cards))
 
-            pair_probability = 0
+            cleaned_ranks = []
+
+            for rank in player_ranks:
+                if rank not in cleaned_ranks:
+                    cleaned_ranks.append(rank)
+                else:
+                    return 100.00
+            
+            # PROBABILIDADE DAS PRÓXIMAS CARTAS SEREM PARES
+
+            pair_probability = 0.00
 
             return pair_probability * 100
+
 
         def close_select_cards():
             self.select_cards.destroy()
@@ -131,6 +144,9 @@ class Game:
                 button.configure(image=photo_image)
                 button.image = photo_image
                 if card not in self.house:
+                    if len(self.house) >= 5:
+                        temp_card = self.house[index]
+                        self.house.remove(temp_card)
                     self.house.insert(index,card)
                 else:
                     self.house.remove(card)
@@ -143,6 +159,9 @@ class Game:
             button.configure(image=photo_image)
             button.image = photo_image
             if card not in self.player_cards:
+                if len(self.player_cards) >= 2:
+                    temp_card = self.player_cards[index]
+                    self.player_cards.remove(temp_card)
                 self.player_cards.insert(index,card)
             else:
                 self.player_cards.remove(card)
