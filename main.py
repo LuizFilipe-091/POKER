@@ -165,21 +165,20 @@ class Game:
 
             player_ranks = list(map(lambda card: card.rank, game_cards))
 
-            cleaned_ranks = []
+            if len(game_cards) != len(set(map(lambda card: card.rank, game_cards))):
+                return 100.0
 
-            for rank in player_ranks:
-                if rank not in cleaned_ranks:
-                    cleaned_ranks.append(rank)
-                else:
-                    return 100.00
+            count_probability = 0
 
-            # PROBABILIDADE DAS PRÓXIMAS CARTAS SEREM PARES
+            for rank_remaining in remaining_cards:
+                if rank_remaining.rank in player_ranks:
+                    count_probability += 1
 
-            pair_probability = 0.00
+            pair_probability = float(count_probability) / len(remaining_cards)
 
             return pair_probability * 100
 
-        def generate_chances(self):
+        def generate_chances():
             if len(self.player_cards) > 0:
                 self.straight_flush.set(f'{get_straight_flush_probability():.2f}%')
                 self.four_of_a_kind.set(f'{get_four_of_a_kind_probability():.2f}%')
@@ -188,8 +187,7 @@ class Game:
                 self.straight.set(f'{get_straight_probability():.2f}%')
                 self.three_of_a_kind.set(f'{get_three_of_a_kind_probability():.2f}%')
                 self.two_pair.set(f'{get_two_pair_probability():.2f}%')
-                self.pair.set(f'{get_pair_probability():.2f}%')
-            return 
+                self.pair.set(f'{get_pair_probability():.2f}%') 
 
         def close_select_cards():
             self.select_cards.destroy()
@@ -204,13 +202,12 @@ class Game:
                 button.configure(image=photo_image, style='Card.TButton')
                 button.image = photo_image
                 if card not in self.house:
-                    if len(self.house) >= 5:
+                    if len(self.house) == index:
+                        self.house.append(card)
+                    else:
                         temp_card = self.house[index]
                         self.house.remove(temp_card)
-                    self.house.insert(index, card)
-                else:
-                    self.house.remove(card)
-                    self.house.insert(index, card)
+                        self.house.insert(index, card)
                 close_select_cards()
                 return
             image_url = card.image_url
@@ -265,10 +262,15 @@ class Game:
                 y = y_start + 44
 
                 for i, card in enumerate(self.DECK):
+                    if card in self.player_cards or card in self.house:
+                        continue
 
-                    if i % 13 == 0 and i != 0:
-                        x += 155
-                        y = y_start + 44
+                    # Calcula a coluna (0 a 3) e a linha (0 a 12) de forma fixa
+                    col = i // 13
+                    row = i % 13
+
+                    card_x = 20 + (col * 155)
+                    card_y = (y_start + 44) + (row * 62)
 
                     image_url = card.image_url
                     image = Image.open(image_url)
@@ -279,9 +281,7 @@ class Game:
                         command=lambda b=master_button, c=card, h=house, i=index: change_image(b, c, h, i)
                     )
                     button.image = photo_image
-                    button.place(x=x, y=y)
-
-                    y += 62
+                    button.place(x=card_x, y=card_y)
 
                 self.select_cards.mainloop()
 
@@ -374,7 +374,7 @@ class Game:
         house_label = Label(house, text='Cartas da Mesa', style='Section.TLabel')
         house_label.place(x=24, y=12)
 
-        card_positions_house = [30, 210, 390, 570, 750]
+        card_positions_house = [55, 235, 415, 625, 805]
 
         button_house_1 = Button(house, text="+", style='Card.TButton',
                                  command=lambda: add_card(button_house_1, True, 0))
@@ -446,7 +446,7 @@ class Game:
             name_label.place(x=24, y=start_y + i * row_height)
 
             value_label = Label(percentage, textvariable=var, style='StatValue.TLabel')
-            value_label.place(x=220, y=start_y + i * row_height)
+            value_label.place(x=190, y=start_y + i * row_height)
 
         divider = Separator(percentage, style='Gold.TSeparator', orient='vertical')
         divider.place(x=300, y=start_y - 6, height=row_height * len(stats_left) + 10)
@@ -459,7 +459,7 @@ class Game:
             name_label.place(x=330, y=start_y + i * row_height)
 
             value_label = Label(percentage, textvariable=var, style='StatValue.TLabel')
-            value_label.place(x=560, y=start_y + i * row_height)
+            value_label.place(x=540, y=start_y + i * row_height)
 
         window.mainloop()
 
