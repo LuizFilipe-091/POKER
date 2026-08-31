@@ -1,4 +1,5 @@
-from typing import Any, Counter, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
+from collections import Counter
 from PIL import Image, ImageTk
 from ttkbootstrap import Label, Window, Separator, Frame, Button, Style, StringVar, Toplevel
 from itertools import combinations
@@ -28,11 +29,6 @@ FONT_CARD_PLUS = ('Segoe UI', 34)
 
 
 def center_window(win, width: int, height: int) -> None:
-    """
-    Calcula o centro do monitor principal e posiciona a janela ali.
-    Usa as dimensões de tela reportadas pelo Tk (winfo_screenwidth/height),
-    que no monitor principal correspondem à resolução real de exibição.
-    """
     win.update_idletasks()
     screen_width = win.winfo_screenwidth()
     screen_height = win.winfo_screenheight()
@@ -44,10 +40,6 @@ def center_window(win, width: int, height: int) -> None:
 
 
 def lock_size(win, width: int, height: int) -> None:
-    """
-    Bloqueia o redimensionamento da janela de forma robusta em qualquer
-    sistema operacional / gerenciador de janelas.
-    """
     win.resizable(False, False)
     win.minsize(width, height)
     win.maxsize(width, height)
@@ -58,10 +50,61 @@ def lock_size(win, width: int, height: int) -> None:
 
     win.bind('<Configure>', _enforce_size)
 
+
 RANK_VALUES = {
     '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
     '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14,
 }
+
+def _has_straight(values) -> bool:
+    unique_values = set(values)
+    if 14 in unique_values:
+        unique_values.add(1)
+
+    sorted_values = sorted(unique_values)
+    run_length = 1
+    for i in range(1, len(sorted_values)):
+        if sorted_values[i] == sorted_values[i - 1] + 1:
+            run_length += 1
+            if run_length >= 5:
+                return True
+        else:
+            run_length = 1
+    return False
+
+
+def hand_indicators(cards: List['Card']) -> Dict[str, bool]:
+    ranks = [RANK_VALUES[card.rank] for card in cards]
+    suits = [card.suit for card in cards]
+
+    rank_counts = Counter(ranks)
+    suit_counts = Counter(suits)
+    counts_sorted = sorted(rank_counts.values(), reverse=True)
+
+    max_count = counts_sorted[0] if counts_sorted else 0
+    ranks_with_pair_or_better = sum(1 for count in rank_counts.values() if count >= 2)
+
+    flush_suit = next((suit for suit, count in suit_counts.items() if count >= 5), None)
+    is_flush = flush_suit is not None
+
+    is_straight_flush = False
+    if is_flush:
+        suited_values = [RANK_VALUES[card.rank] for card in cards if card.suit == flush_suit]
+        is_straight_flush = _has_straight(suited_values)
+
+    is_full_house = len(counts_sorted) > 1 and counts_sorted[0] >= 3 and counts_sorted[1] >= 2
+
+    return {
+        'pair': max_count >= 2,
+        'two_pair': ranks_with_pair_or_better >= 2,
+        'three_of_a_kind': max_count >= 3,
+        'full_house': is_full_house,
+        'flush': is_flush,
+        'straight': _has_straight(ranks),
+        'four_of_a_kind': max_count >= 4,
+        'straight_flush': is_straight_flush,
+    }
+
 
 class Card:
 
@@ -125,315 +168,184 @@ class Game:
         self.game()
 
     def game(self):
-
-        def get_straight_flush_probability() -> float:
-            return 0.0
-        def get_four_of_a_kind_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
+        def get_context():
+            remaining_cards = [
+                card for card in self.DECK
+                if card not in self.player_cards and card not in self.house
+            ]
             game_cards = self.house + self.player_cards
-            player_ranks = list(map(lambda card: card.rank, game_cards))
-            rank_counts = Counter(player_ranks)
-
-            # JA TEM QUADRA?
-            if any(count >= 4 for count in rank_counts.values()):
-                return 100.0
-
             missing_cards_count = max(0, 5 - len(self.house))
             total_remaining = len(remaining_cards)
+            return remaining_cards, game_cards, missing_cards_count, total_remaining
 
-            # MESA JA COMPLETA E AINDA NAO TEM -> nao tem mais carta pra sair
+        def rank_groups(game_cards) -> Dict[str, List[str]]:
+            rank_counts = Counter(card.rank for card in game_cards)
+            return {
+                'singles': [rank for rank, count in rank_counts.items() if count == 1],
+                'pairs': [rank for rank, count in rank_counts.items() if count == 2],
+                'trips': [rank for rank, count in rank_counts.items() if count == 3],
+                'pairs_or_better': [rank for rank, count in rank_counts.items() if count >= 2],
+                'trips_or_better': [rank for rank, count in rank_counts.items() if count >= 3],
+                'quads_or_better': [rank for rank, count in rank_counts.items() if count >= 4],
+            }
+
+        def probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, category) -> float:
+            if missing_cards_count == 0:
+                return 0.0
+            hits = 0
+            total = 0
+            for extra_cards in combinations(remaining_cards, missing_cards_count):
+                final_hand = game_cards + list(extra_cards)
+                if hand_indicators(final_hand)[category]:
+                    hits += 1
+                total += 1
+
+            return (hits / total * 100) if total else 0.0
+        def get_pair_probability() -> float:
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
+
+            if hand_indicators(game_cards)['pair']:
+                return 100.0
             if missing_cards_count == 0:
                 return 0.0
 
-            tripped_ranks = [rank for rank, count in rank_counts.items() if count == 3]
+            groups = rank_groups(game_cards)
 
-            # SO FALTA 1 CARTA: so completa quadra se voce ja tiver uma trinca
-            # (falta so 1 pra virar 4) - com par so (2 cartas), 1 carta so vira
-            # trinca, nao quadra.
             if missing_cards_count == 1:
-                if not tripped_ranks:
-                    return 0.0
-                outs = sum(1 for card in remaining_cards if card.rank in tripped_ranks)
+                known_ranks = groups['singles']
+                outs = sum(1 for card in remaining_cards if card.rank in known_ranks)
                 return (outs / total_remaining * 100) if total_remaining else 0.0
 
-            # FALTAM 2+ CARTAS: conferimos todas as combinacoes possiveis
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_ranks = player_ranks + [card.rank for card in extra_cards]
-                counts = Counter(final_ranks)
-                if any(count >= 4 for count in counts.values()):
-                    hits += 1
-                total += 1
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'pair')
 
-            return (hits / total * 100) if total else 0.0
+        def get_two_pair_probability() -> float:
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
+
+            if hand_indicators(game_cards)['two_pair']:
+                return 100.0
+            if missing_cards_count == 0:
+                return 0.0
+
+            groups = rank_groups(game_cards)
+
+            if missing_cards_count == 1:
+                if not groups['pairs_or_better']:
+                    return 0.0  # sem nenhum par ainda, 1 carta so da pra formar 1 par, nao 2
+                outs = sum(1 for card in remaining_cards if card.rank in groups['singles'])
+                return (outs / total_remaining * 100) if total_remaining else 0.0
+
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'two_pair')
+
+        def get_three_of_a_kind_probability() -> float:
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
+
+            if hand_indicators(game_cards)['three_of_a_kind']:
+                return 100.0
+            if missing_cards_count == 0:
+                return 0.0
+
+            groups = rank_groups(game_cards)
+
+            if missing_cards_count == 1:
+                if not groups['pairs']:
+                    return 0.0  # sem par nenhum, 1 carta nao "nasce" uma trinca do zero
+                outs = sum(1 for card in remaining_cards if card.rank in groups['pairs'])
+                return (outs / total_remaining * 100) if total_remaining else 0.0
+
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'three_of_a_kind')
 
         def get_full_house_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
-            game_cards = self.house + self.player_cards
-            player_ranks = list(map(lambda card: card.rank, game_cards))
-            rank_counts = Counter(player_ranks)
-            counts_sorted = sorted(rank_counts.values(), reverse=True)
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
 
-            # JA TEM FULL HOUSE? (trinca + outro par, ranks diferentes)
-            if len(counts_sorted) > 1 and counts_sorted[0] >= 3 and counts_sorted[1] >= 2:
+            if hand_indicators(game_cards)['full_house']:
                 return 100.0
-
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # MESA JA COMPLETA E AINDA NAO TEM -> nao tem mais carta pra sair
             if missing_cards_count == 0:
                 return 0.0
 
-            tripped_ranks = [rank for rank, count in rank_counts.items() if count >= 3]
-            paired_ranks = [rank for rank, count in rank_counts.items() if count == 2]
-            single_ranks = [rank for rank, count in rank_counts.items() if count == 1]
+            groups = rank_groups(game_cards)
 
-            # SO FALTA 1 CARTA: so tem 2 jeitos de fechar o full house com 1 carta so
             if missing_cards_count == 1:
-                if tripped_ranks:
-                    # ja tem trinca -> falta so parear QUALQUER outra rank solta
-                    outs = sum(1 for card in remaining_cards if card.rank in single_ranks)
+                if groups['trips_or_better']:
+                    outs = sum(1 for card in remaining_cards if card.rank in groups['singles'])
                     return (outs / total_remaining * 100) if total_remaining else 0.0
-                if len(paired_ranks) >= 2:
-                    # ja tem 2 pares -> falta so virar trinca em UM dos dois
-                    outs = sum(1 for card in remaining_cards if card.rank in paired_ranks)
+                if len(groups['pairs']) >= 2:
+                    outs = sum(1 for card in remaining_cards if card.rank in groups['pairs'])
                     return (outs / total_remaining * 100) if total_remaining else 0.0
-                # so 1 par (ou nenhum) -> impossivel fechar full house com 1 carta so
                 return 0.0
 
-            # FALTAM 2+ CARTAS: conferimos todas as combinacoes possiveis
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_ranks = player_ranks + [card.rank for card in extra_cards]
-                counts = sorted(Counter(final_ranks).values(), reverse=True)
-                if len(counts) > 1 and counts[0] >= 3 and counts[1] >= 2:
-                    hits += 1
-                total += 1
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'full_house')
 
-            return (hits / total * 100) if total else 0.0
+        def get_four_of_a_kind_probability() -> float:
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
+
+            if hand_indicators(game_cards)['four_of_a_kind']:
+                return 100.0
+            if missing_cards_count == 0:
+                return 0.0
+
+            groups = rank_groups(game_cards)
+
+            if missing_cards_count == 1:
+                if not groups['trips']:
+                    return 0.0
+                outs = sum(1 for card in remaining_cards if card.rank in groups['trips'])
+                return (outs / total_remaining * 100) if total_remaining else 0.0
+
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'four_of_a_kind')
 
         def get_flush_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
-            game_cards = self.house + self.player_cards
-            suit_counts = Counter(card.suit for card in game_cards)
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
 
-            # JA TEM FLUSH?
-            if any(count >= 5 for count in suit_counts.values()):
+            if hand_indicators(game_cards)['flush']:
                 return 100.0
-
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # MESA JA COMPLETA E AINDA NAO TEM -> nao tem mais carta pra sair
             if missing_cards_count == 0:
                 return 0.0
 
-            # SO FALTA 1 CARTA: so completa o flush se algum naipe ja tiver
-            # exatamente 4 cartas (falta so 1 pra fechar)
             if missing_cards_count == 1:
+                suit_counts = Counter(card.suit for card in game_cards)
                 needed_suits = [suit for suit, count in suit_counts.items() if count == 4]
                 if not needed_suits:
                     return 0.0
                 outs = sum(1 for card in remaining_cards if card.suit in needed_suits)
                 return (outs / total_remaining * 100) if total_remaining else 0.0
 
-            # FALTAM 2+ CARTAS: conferimos todas as combinacoes possiveis
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_suits = [card.suit for card in game_cards] + [card.suit for card in extra_cards]
-                counts = Counter(final_suits)
-                if any(count >= 5 for count in counts.values()):
-                    hits += 1
-                total += 1
-
-            return (hits / total * 100) if total else 0.0
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'flush')
 
         def get_straight_probability() -> float:
-            def _has_straight(values) -> bool:
-                unique_values = set(values)
-                if 14 in unique_values:
-                    unique_values.add(1)
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
+            player_values = [RANK_VALUES[card.rank] for card in game_cards]
 
-                sorted_values = sorted(unique_values)
-                run_length = 1
-                for i in range(1, len(sorted_values)):
-                    if sorted_values[i] == sorted_values[i - 1] + 1:
-                        run_length += 1
-                        if run_length >= 5:
-                            return True
-                    else:
-                        run_length = 1
-                return False
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
-            game_cards = self.house + self.player_cards
-            player_ranks = [RANK_VALUES[card.rank] for card in game_cards]
-
-            # JA TEM STRAIGHT?
-            if _has_straight(player_ranks):
+            if _has_straight(player_values):
                 return 100.0
-
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # MESA JA COMPLETA E AINDA NAO TEM -> nao tem mais carta pra sair
             if missing_cards_count == 0:
                 return 0.0
 
-            # SO FALTA 1 CARTA: descobre exatamente quais valores completariam a
-            # sequencia (pode ser 1 valor - sequencia de ponta - ou 2 valores -
-            # sequencia aberta pelos dois lados) e conta quantas cartas restantes
-            # tem esses valores.
             if missing_cards_count == 1:
                 qualifying_values = {
                     value for value in range(2, 15)
-                    if _has_straight(player_ranks + [value])
+                    if _has_straight(player_values + [value])
                 }
                 outs = sum(1 for card in remaining_cards if RANK_VALUES[card.rank] in qualifying_values)
                 return (outs / total_remaining * 100) if total_remaining else 0.0
 
-            # FALTAM 2+ CARTAS: a sequencia pode nascer de combinacoes diferentes
-            # das cartas que ainda vao sair (nao da so pra contar "outs" fixos),
-            # entao conferimos todas as combinacoes possiveis.
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_values = player_ranks + [RANK_VALUES[card.rank] for card in extra_cards]
-                if _has_straight(final_values):
-                    hits += 1
-                total += 1
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'straight')
 
-            return (hits / total * 100) if total else 0.0
+        def get_straight_flush_probability() -> float:
+            remaining_cards, game_cards, missing_cards_count, total_remaining = get_context()
 
-        def get_three_of_a_kind_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
-            game_cards = self.house + self.player_cards
-            player_ranks = list(map(lambda card: card.rank, game_cards))
-            rank_counts = Counter(player_ranks)
-
-            # JA TEM TRINCA? (cobre tambem full house e quadra, que contem trinca dentro)
-            if any(count >= 3 for count in rank_counts.values()):
+            if hand_indicators(game_cards)['straight_flush']:
                 return 100.0
-
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # MESA JA COMPLETA E AINDA NAO TEM -> nao tem mais carta pra sair
             if missing_cards_count == 0:
                 return 0.0
 
-            paired_ranks = [rank for rank, count in rank_counts.items() if count == 2]
-
-            # SO FALTA 1 CARTA: ela sozinha so completa uma trinca se voce ja tiver
-            # um par de algum rank (falta so 1 pra virar trinca) - nao da pra
-            # "nascer" uma trinca nova do zero com 1 carta so.
             if missing_cards_count == 1:
-                if not paired_ranks:
-                    return 0.0
-                outs = sum(1 for card in remaining_cards if card.rank in paired_ranks)
+                outs = sum(
+                    1 for card in remaining_cards
+                    if hand_indicators(game_cards + [card])['straight_flush']
+                )
                 return (outs / total_remaining * 100) if total_remaining else 0.0
 
-            # FALTAM 2+ CARTAS: alem de completar um par que voce ja tem, uma
-            # trinca nova pode nascer inteiramente das cartas que ainda vao sair
-            # (se sobrarem pelo menos 3 pra sair) - por isso conferimos todas as
-            # combinacoes possiveis.
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_ranks = player_ranks + [card.rank for card in extra_cards]
-                counts = Counter(final_ranks)
-                if any(count >= 3 for count in counts.values()):
-                    hits += 1
-                total += 1
-
-            return (hits / total * 100) if total else 0.0
-
-        def get_two_pair_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards and card not in self.house]
-            game_cards = self.house + self.player_cards
-            player_ranks = list(map(lambda card: card.rank, game_cards))
-
-            rank_counts = Counter(player_ranks)
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # JA TEM TWO PAIR? (cobre 2 pares distintos, e também full house/quadra+par,
-            # que tecnicamente também contam como "ter dois pares")
-            if sum(1 for count in rank_counts.values() if count >= 2) >= 2:
-                return 100.0
-
-            # MESA JA COMPLETA (river) E AINDA NAO TEM -> nao tem mais carta pra sair
-            if missing_cards_count == 0:
-                return 0.0
-
-            paired_ranks = [rank for rank, count in rank_counts.items() if count >= 2]
-            leftover_ranks = [rank for rank, count in rank_counts.items() if count == 1]
-
-            # SO FALTA 1 CARTA NA MESA (river por vir): ela sozinha NAO consegue
-            # formar um par novo do nada (precisaria de 2 cartas pra isso) - só pode
-            # completar o two pair se bater com uma rank que já sobrou.
-            if missing_cards_count == 1:
-                if not paired_ranks:
-                    return 0.0  # sem nenhum par ainda, 1 carta só dá pra formar 1 par, nao 2
-
-                leftover_outs = sum(1 for card in remaining_cards if card.rank in leftover_ranks)
-                return (leftover_outs / total_remaining * 100) if total_remaining else 0.0
-
-            # FALTAM 2+ CARTAS: além de poder parear com o que já sobrou, as
-            # PRÓPRIAS cartas que ainda vão sair podem formar um par novo entre
-            # elas (sem nenhuma relação com o que você já tem) - por isso, com 2+
-            # cartas faltando, o cálculo direto não cobre tudo e a gente confere
-            # todas as combinações possíveis das cartas que faltam.
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_ranks = player_ranks + [card.rank for card in extra_cards]
-                counts = Counter(final_ranks)
-                if sum(1 for count in counts.values() if count >= 2) >= 2:
-                    hits += 1
-                total += 1
-
-            return (hits / total * 100) if total else 0.0
-
-        def get_pair_probability() -> float:
-            remaining_cards = [card for card in self.DECK if card not in self.player_cards + self.house]
-            game_cards = self.house + self.player_cards
-            player_ranks = list(map(lambda card: card.rank, game_cards))
-
-            # JA TEM PAR?
-            if len(game_cards) != len(set(player_ranks)):
-                return 100.0
-
-            missing_cards_count = max(0, 5 - len(self.house))
-            total_remaining = len(remaining_cards)
-
-            # MESA JA COMPLETA (river) E AINDA NAO TEM -> nao tem mais carta pra sair
-            if missing_cards_count == 0:
-                return 0.0
-
-            # SO FALTA 1 CARTA: ela sozinha só pode dar par se bater com uma rank
-            # que já está na mão/mesa - não dá pra "nascer" um par novo com 1 carta só
-            if missing_cards_count == 1:
-                count_probability = sum(1 for card in remaining_cards if card.rank in player_ranks)
-                return (count_probability / total_remaining * 100) if total_remaining else 0.0
-
-            # FALTAM 2+ CARTAS: alem de poder bater com uma rank que voce ja tem,
-            # DUAS cartas novas da mesa podem parear ENTRE ELAS, sem nenhuma
-            # relacao com a sua mao - por isso, com 2+ faltando, conferimos todas
-            # as combinacoes possiveis das cartas que ainda vao sair.
-            hits = 0
-            total = 0
-            for extra_cards in combinations(remaining_cards, missing_cards_count):
-                final_ranks = player_ranks + [card.rank for card in extra_cards]
-                counts = Counter(final_ranks)
-                if any(count >= 2 for count in counts.values()):
-                    hits += 1
-                total += 1
-
-            return (hits / total * 100) if total else 0.0
+            return probability_by_enumeration(game_cards, remaining_cards, missing_cards_count, 'straight_flush')
 
         def generate_chances():
             if len(self.player_cards) > 0:
@@ -444,7 +356,7 @@ class Game:
                 self.straight.set(f'{get_straight_probability():.2f}%')
                 self.three_of_a_kind.set(f'{get_three_of_a_kind_probability():.2f}%')
                 self.two_pair.set(f'{get_two_pair_probability():.2f}%')
-                self.pair.set(f'{get_pair_probability():.2f}%') 
+                self.pair.set(f'{get_pair_probability():.2f}%')
 
         def close_select_cards():
             if self.select_cards:
